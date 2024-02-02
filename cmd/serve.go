@@ -17,6 +17,7 @@ var serveCmd = &cobra.Command{
 	Use:   "serve",
 	Short: "Start the server",
 	Run: func(cmd *cobra.Command, args []string) {
+		// setup badgerDB
 		opts := badger.DefaultOptions("").WithInMemory(true)
 		opts  = opts.WithIndexCacheSize(100 << 19) // 50MB
 		badgerDB, err := badger.Open(opts)
@@ -24,7 +25,10 @@ var serveCmd = &cobra.Command{
 		if err != nil {
 			panic(err)
 		}
+
+		// start the controllers
 		go mgr.Start(badgerDB)
+		// start the API server
 		api.Serve(badgerDB)
 	},
 }
