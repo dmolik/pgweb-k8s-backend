@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"log"
+
 	"github.com/spf13/cobra"
 
 	"github.com/dmolik/pgweb-k8s-backend/api"
@@ -21,9 +23,13 @@ var serveCmd = &cobra.Command{
 		opts := badger.DefaultOptions("").WithInMemory(true)
 		opts  = opts.WithIndexCacheSize(100 << 19) // 50MB
 		badgerDB, err := badger.Open(opts)
-		defer badgerDB.Close()
+		defer func(){
+			if err := badgerDB.Close(); err != nil {
+				log.Fatal(err)
+			}
+		}()
 		if err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
 
 		// start the controllers
