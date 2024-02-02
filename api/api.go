@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 	badger "github.com/dgraph-io/badger/v4"
 )
 
@@ -19,7 +20,9 @@ type BackendResponse struct {
 }
 
 func Serve(db *badger.DB) {
-	http.HandleFunc("/", func(rw http.ResponseWriter, req *http.Request) {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/", func(rw http.ResponseWriter, req *http.Request) {
 		backendReq := BackendRequest{}
 
 		if err := json.NewDecoder(req.Body).Decode(&backendReq); err != nil {
@@ -50,10 +53,10 @@ func Serve(db *badger.DB) {
 			return
 		}
 
-		json.NewEncoder(rw).Encode(resp)
+		_ = json.NewEncoder(rw).Encode(resp)
 	})
 
-	http.HandleFunc("/list", func(rw http.ResponseWriter, req *http.Request) {
+	mux.HandleFunc("/list", func(rw http.ResponseWriter, req *http.Request) {
 		var keys []string
 		err := db.View(func(txn *badger.Txn) error {
 			opts := badger.DefaultIteratorOptions
@@ -71,10 +74,18 @@ func Serve(db *badger.DB) {
 			rw.WriteHeader(500)
 			return
 		}
-		json.NewEncoder(rw).Encode(keys)
+		_ = json.NewEncoder(rw).Encode(keys)
 	})
 
-	if err := http.ListenAndServe(":4567", nil); err != nil {
+	srv := &http.Server{
+		Addr:        ":4567",
+		Handler:     mux,
+		ReadTimeout: 5 * time.Second,
+		WriteTimeout: 5 * time.Second,
+		 IdleTimeout: 5 * time.Second,
+	}
+
+	if err := srv.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
 }
