@@ -82,7 +82,7 @@ func Serve(db *badger.DB) {
 		Handler:     mux,
 		ReadTimeout: 5 * time.Second,
 		WriteTimeout: 5 * time.Second,
-		 IdleTimeout: 5 * time.Second,
+		IdleTimeout: 5 * time.Second,
 	}
 
 	if err := srv.ListenAndServe(); err != nil {
