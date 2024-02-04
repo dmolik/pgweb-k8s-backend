@@ -60,19 +60,55 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, err
 	}
 
-	url := fmt.Sprintf("postgres://%s:%s@%s:5432/%s?sslmode=require", user, pass, host, "postgres")
-
 	n := strings.Split(req.Name, "-")
 	key := req.Namespace + "-" + n[0]
-	txn := r.DB.NewTransaction(true)
-	if err := txn.Set([]byte(key),[]byte(url)); err != nil {
-		txn.Discard()
+	url := fmt.Sprintf("postgres://%s:%s@%s:5432/%s?sslmode=require", user, pass, host, "postgres")
+	err = r.saveToDB(ctx, req, key, url)
+	if err != nil {
 		return ctrl.Result{}, err
 	}
-	_ = txn.Commit()
+
+	clusters, err := r.listClusters(ctx)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	clustersFromDB, err := r.getAllFromDB(ctx, req)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	for _, c := range clustersFromDB {
+		if notInList(clusters, c) {
+			err = r.deleteFromDB(ctx, req, c)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+	}
 
 
 	return ctrl.Result{RequeueAfter: oneMinute}, nil
+}
+
+func notInList(list []string, item string) bool {
+	for _, l := range list {
+		if l == item {
+			return false
+		}
+	}
+	return true
+}
+
+func (r *ClusterReconciler) listClusters(ctx context.Context) ([]string, error) {
+	clusters := pgv1.PostgresqlList{}
+	err := r.List(ctx, &clusters)
+	if err != nil {
+		return []string{}, err
+	}
+	clusternames := []string{}
+	for _, cluster := range clusters.Items {
+		clusternames = append(clusternames, cluster.ObjectMeta.Namespace + "-" + strings.Split(cluster.ObjectMeta.Name, "-")[0])
+	}
+	return clusternames, nil
 }
 
 func (r *ClusterReconciler) getPgCreds(ctx context.Context, req ctrl.Request) (string, string, error) {
@@ -99,6 +135,50 @@ func (r *ClusterReconciler) getPgHost(ctx context.Context, req ctrl.Request) (st
 	}
 
 	return svc.ObjectMeta.Name +"."+svc.ObjectMeta.Namespace+".svc", nil
+}
+
+func (r *ClusterReconciler) getAllFromDB(ctx context.Context, req ctrl.Request) ([]string, error) {
+	var keys []string
+	err := r.DB.View(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		opts.PrefetchSize = 10
+		it := txn.NewIterator(opts)
+		defer it.Close()
+		for it.Rewind(); it.Valid(); it.Next() {
+			item := it.Item()
+			k := item.Key()
+			keys = append(keys, string(k))
+		}
+		return nil
+	})
+	if err != nil {
+		return []string{}, err
+	}
+	return keys, nil
+}
+
+func (r *ClusterReconciler) saveToDB(ctx context.Context, req ctrl.Request, key, url string) error {
+	txn := r.DB.NewTransaction(true)
+	if err := txn.Set([]byte(key),[]byte(url)); err != nil {
+		txn.Discard()
+		return err
+	}
+	err := txn.Commit()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (r *ClusterReconciler) deleteFromDB(ctx context.Context, req ctrl.Request, key string) error {
+	err := r.DB.Update(func(txn *badger.Txn) error {
+		err := txn.Delete([]byte(key))
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+	return err
 }
 
 // SetupWithManager sets up the controller with the Manager.
