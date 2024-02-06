@@ -28,8 +28,14 @@ $(BIN): $(SRC) go.mod go.sum
 		-gcflags "all=-N -l" \
 		-o $@ ./main/main.go
 
+lib64:
+	$Qinstall -d $@
+
+libs: lib64 $(BIN)
+	$(shell for i in $$(ldd $(BIN) | sed -e '/linux-vdso/d' -e 's/^[\ \t]\+//' -e 's/(0x[0-9a-h]\+)//' -e 's/^\S\+\ =>\ //' ) ; do cp $$i lib64 ; done)
+
 .PHONY: container
-container: $(BIN)
+container: libs $(BIN)
 	$Q$(RUNTIME) build -t $(IMAGE) .
 
 .PHONY: clean real-clean

@@ -10,6 +10,8 @@ COPY --from=CA /etc/group  /etc/group
 COPY --from=CA /etc/passwd /etc/passwd
 
 COPY ./pgweb-k8s-backend /pgweb-k8s-backend
+COPY ./lib64/* /lib64/
+
 
 EXPOSE 4673
 USER pgweb
